@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>XatBotIA - Painel de Controle</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <!-- Overlay para modal -->
+    <div id="overlay" class="overlay"></div>
+    
+    <!-- Modal de Login -->
+    <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Login Deep Zap</h2>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <i class="fas fa-user icon"></i>
+                    <input type="text" id="loginUsername" placeholder="Usuário">
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-lock icon"></i>
+                    <input type="password" id="loginPassword" placeholder="Senha">
+                </div>
+                <div class="error-message" id="loginError"></div>
+                <div class="button-group">
+                    <button id="btnLogin" class="btn btn-primary">Entrar</button>
+                    <button id="btnShowRegister" class="btn btn-secondary">Criar Conta</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modal de Registro -->
+    <div id="registerModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Criar Nova Conta</h2>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <i class="fas fa-user icon"></i>
+                    <input type="text" id="registerUsername" placeholder="Escolha um usuário">
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-lock icon"></i>
+                    <input type="password" id="registerPassword" placeholder="Escolha uma senha">
+                </div>
+                <div class="input-group">
+                    <i class="fas fa-lock icon"></i>
+                    <input type="password" id="confirmPassword" placeholder="Confirme a senha">
+                </div>
+                <div class="error-message" id="registerError"></div>
+                <div class="button-group">
+                    <button id="btnRegister" class="btn btn-primary">Criar Conta</button>
+                    <button id="btnShowLogin" class="btn btn-secondary">Voltar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Painel Principal (Oculto inicialmente) -->
+    <div id="mainPanel" class="panel hidden">
+        <header class="app-header">
+            <div class="logo">
+                <i class="fas fa-robot"></i>
+                <h1>Deep Zap</h1>
+            </div>
+            <div class="user-info">
+                <span id="userDisplay">Olá, </span>
+                <button id="btnLogout" class="btn btn-small">Sair</button>
+            </div>
+        </header>
+        
+        <div class="container">
+            <div class="sidebar">
+                <div class="status-card">
+                    <h3>Status do Bot</h3>
+                    <div class="status-indicator">
+                        <span id="connectionStatus" class="status-badge offline">Desconectado</span>
+                    </div>
+                    <div class="whatsapp-info">
+                        <p>Número: <span id="phoneNumber">Não conectado</span></p>
+                    </div>
+                    <button id="btnStartWhatsapp" class="btn btn-success btn-block">
+                        <i class="fab fa-whatsapp"></i> Iniciar WhatsApp
+                    </button>
+                </div>
+                
+                <div class="bot-controls">
+                    <h3>Controles</h3>
+                    <div class="toggle-container">
+                        <label for="botToggle">Bot Ativo</label>
+                        <label class="switch">
+                            <input type="checkbox" id="botToggle" checked>
+                            <span class="slider round"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="main-content">
+                <div class="card qrcode-card">
+                    <div class="card-header">
+                        <h3>QR Code para Conexão</h3>
+                    </div>
+                    <div class="card-body">
+                        <div id="qrcode-container">
+                            <p class="instruction">Clique em "Iniciar WhatsApp" para gerar o QR Code</p>
+                            <div id="qrcode" class="hidden"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card prompt-card">
+                    <div class="card-header">
+                        <h3>Configuração do Prompt IA</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="prompt-editor">
+                            <textarea id="promptText" rows="10" placeholder="Configure a personalidade do seu assistente..."></textarea>
+                            <button id="btnSavePrompt" class="btn btn-primary">Salvar Prompt</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    <script src="https://unpkg.com/qrcode-generator@1.4.4/qrcode.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
