@@ -1,6 +1,6 @@
 // Configurações da aplicação
 const API_URL = 'https://aeb3-187-15-7-70.ngrok-free.app/api'; // URL do servidor Flask via Ngrok
-const JS_API_URL = 'https://aeb3-187-15-7-70.ngrok-free.app/js-api'; // URL do servidor JS (opcional)
+const JS_API_URL = 'https://aeb3-187-15-7-70.ngrok-free.app/js-api'; // URL do proxy para o servidor JS
 
 // Estado da aplicação
 let currentUser = null;
@@ -118,7 +118,8 @@ async function handleLogin() {
         const response = await fetch(`${API_URL}/auth/login`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'mode': 'cors'
             },
             body: JSON.stringify({ username, password })
         });
@@ -180,7 +181,8 @@ async function handleRegister() {
         const response = await fetch(`${API_URL}/auth/register`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'mode': 'cors'
             },
             body: JSON.stringify({ username, password })
         });
@@ -244,13 +246,19 @@ function handleLogout() {
     hideMainPanel();
     showLoginModal();
     
-    // Fazer logout no servidor
-    fetch(`${API_URL}/auth/logout`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${authToken}`
-        }
-    }).catch(error => console.error('Erro ao fazer logout no servidor:', error));
+    // Fazer logout no servidor (mesmo que falhe, o logout local já foi feito)
+    try {
+        fetch(`${API_URL}/auth/logout`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${authToken}`,
+                'Content-Type': 'application/json',
+                'mode': 'cors'
+            }
+        }).catch(error => console.error('Erro ao fazer logout no servidor:', error));
+    } catch (e) {
+        console.error("Erro ao enviar requisição de logout:", e);
+    }
 }
 
 // Atualizar UI com dados do usuário
@@ -329,7 +337,8 @@ async function initializeWhatsApp() {
         const testResponse = await fetch(`${API_URL}/auth/verify`, {
             method: 'GET',
             headers: {
-                'Authorization': `Bearer ${authToken}`
+                'Authorization': `Bearer ${authToken}`,
+                'mode': 'cors'
             }
         });
         
@@ -344,13 +353,17 @@ async function initializeWhatsApp() {
         }
         
         // Se chegou aqui, o token é válido - iniciar WhatsApp
-        const response = await fetch(`${API_URL}/whatsapp/init`, {
+        const response = await fetch(`${JS_API_URL}/whatsapp/init`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
+                'Authorization': `Bearer ${authToken}`,
+                'mode': 'cors'
             },
-            body: JSON.stringify({ username: currentUser.username })
+            body: JSON.stringify({ 
+                username: currentUser.username,
+                simulate: true // Forçar modo simulado para teste
+            })
         });
         
         // Verificar resposta
@@ -363,22 +376,30 @@ async function initializeWhatsApp() {
             return;
         }
         
-        const data = await response.json();
+        const responseText = await response.text();
+        console.log("Resposta bruta de init:", responseText);
         
-        if (data.success) {
-            showNotification('WhatsApp iniciado. Aguarde o QR Code.', 'success');
+        try {
+            const data = JSON.parse(responseText);
             
-            // Iniciar monitoramento de QR Code
-            startQRCodeMonitoring();
-        } else {
-            showNotification(data.message || 'Erro ao iniciar WhatsApp', 'error');
-            
-            // Atualizar UI para mostrar erro
-            document.querySelector('.instruction').textContent = 'Erro ao iniciar WhatsApp. Tente novamente.';
-            
-            // Atualizar status
-            statusElement.textContent = 'Erro';
-            statusElement.className = 'status-badge offline';
+            if (data.success) {
+                showNotification('WhatsApp iniciado. Aguarde o QR Code.', 'success');
+                
+                // Iniciar monitoramento de QR Code
+                startQRCodeMonitoring();
+            } else {
+                showNotification(data.message || 'Erro ao iniciar WhatsApp', 'error');
+                
+                // Atualizar UI para mostrar erro
+                document.querySelector('.instruction').textContent = 'Erro ao iniciar WhatsApp. Tente novamente.';
+                
+                // Atualizar status
+                statusElement.textContent = 'Erro';
+                statusElement.className = 'status-badge offline';
+            }
+        } catch (jsonError) {
+            console.error("Erro ao analisar JSON de init:", jsonError);
+            showNotification('Erro ao processar resposta do servidor', 'error');
         }
         
         // Reabilitar botão
@@ -411,8 +432,8 @@ function startQRCodeMonitoring() {
         qrCodeEventSource.close();
     }
     
-    // Usar o endpoint -stream em vez de -sse
-    const eventSourceUrl = `${API_URL}/whatsapp/qrcode-stream/${currentUser.username}?token=${encodeURIComponent(authToken)}`;
+    // Usar o endpoint JS-API para QR code
+    const eventSourceUrl = `${JS_API_URL}/whatsapp/qrcode-sse/${currentUser.username}?token=${encodeURIComponent(authToken)}`;
     console.log("Conectando ao EventSource:", eventSourceUrl);
     
     // Limitar tentativas a 3
@@ -529,11 +550,63 @@ async function checkWhatsAppStatus() {
     if (!currentUser || !authToken) return;
     
     try {
-        const response = await fetch(`${API_URL}/whatsapp/status/${currentUser.username}`, {
+        // Usar o endpoint proxy JS em vez do API diretamente
+        const response = await fetch(`${JS_API_URL}/whatsapp/status/${currentUser.username}`, {
             headers: {
-                'Authorization': `Bearer ${authToken}`
+                'Authorization': `Bearer ${authToken}`,
+                'mode': 'cors'
             }
         });
+        
+        // Obter o texto bruto primeiro para debugging
+        const responseText = await response.text();
+        console.log("Resposta bruta do status:", responseText);
+        
+        // Tentar analisar como JSON
+        try {
+            const data = JSON.parse(responseText);
+            
+            if (data.success && data.status) {
+                // Atualizar indicador de status
+                const statusElement = document.getElementById('connectionStatus');
+                const numberElement = document.getElementById('phoneNumber');
+                
+                if (data.status.connected) {
+                    statusElement.textContent = 'Conectado';
+                    statusElement.className = 'status-badge online';
+                    
+                    // Verificar número de WhatsApp válido antes de fechar EventSource
+                    if (data.status.phoneNumber && data.status.phoneNumber !== 'Não conectado') {
+                        // Se acabou de conectar e havia um EventSource aberto, fechar
+                        if (qrCodeEventSource) {
+                            console.log("WhatsApp conectado, fechando EventSource");
+                            qrCodeEventSource.close();
+                            qrCodeEventSource = null;
+                        }
+                        
+                        // Esconder QR Code e mostrar mensagem
+                        document.getElementById('qrcode').classList.add('hidden');
+                        document.querySelector('.instruction').textContent = 'WhatsApp conectado com sucesso!';
+                    }
+                } else {
+                    statusElement.textContent = 'Desconectado';
+                    statusElement.className = 'status-badge offline';
+                }
+                
+                // Atualizar número de telefone
+                numberElement.textContent = data.status.phoneNumber || 'Não conectado';
+                
+                // Atualizar status do bot
+                document.getElementById('botToggle').checked = data.status.botActive;
+                
+                // Se for um cliente simulado, mostrar indicação
+                if (data.status.simulated) {
+                    statusElement.textContent += ' (Simulado)';
+                }
+            }
+        } catch (jsonError) {
+            console.error("Erro ao analisar JSON:", jsonError);
+        }
         
         // Se token expirou, fazer logout
         if (response.status === 401) {
@@ -558,42 +631,6 @@ async function checkWhatsAppStatus() {
             
             showNotification('Sessão expirada. Faça login novamente.', 'error');
             return;
-        }
-        
-        const data = await response.json();
-        
-        if (data.success && data.status) {
-            // Atualizar indicador de status
-            const statusElement = document.getElementById('connectionStatus');
-            const numberElement = document.getElementById('phoneNumber');
-            
-            if (data.status.connected) {
-                statusElement.textContent = 'Conectado';
-                statusElement.className = 'status-badge online';
-                
-                // Verificar número de WhatsApp válido antes de fechar EventSource
-                if (data.status.phoneNumber && data.status.phoneNumber !== 'Não conectado') {
-                    // Se acabou de conectar e havia um EventSource aberto, fechar
-                    if (qrCodeEventSource) {
-                        console.log("WhatsApp conectado, fechando EventSource");
-                        qrCodeEventSource.close();
-                        qrCodeEventSource = null;
-                    }
-                    
-                    // Esconder QR Code e mostrar mensagem
-                    document.getElementById('qrcode').classList.add('hidden');
-                    document.querySelector('.instruction').textContent = 'WhatsApp conectado com sucesso!';
-                }
-            } else {
-                statusElement.textContent = 'Desconectado';
-                statusElement.className = 'status-badge offline';
-            }
-            
-            // Atualizar número de telefone
-            numberElement.textContent = data.status.phoneNumber || 'Não conectado';
-            
-            // Atualizar status do bot
-            document.getElementById('botToggle').checked = data.status.botActive;
         }
     } catch (error) {
         console.error('Erro ao verificar status do WhatsApp:', error);
@@ -624,11 +661,12 @@ async function savePrompt() {
         btnSave.disabled = true;
         btnSave.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Salvando...';
         
-        const response = await fetch(`${API_URL}/whatsapp/update-prompt`, {
+        const response = await fetch(`${JS_API_URL}/whatsapp/update-prompt`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
+                'Authorization': `Bearer ${authToken}`,
+                'mode': 'cors'
             },
             body: JSON.stringify({
                 username: currentUser.username,
@@ -646,16 +684,24 @@ async function savePrompt() {
             return;
         }
         
-        const data = await response.json();
+        const responseText = await response.text();
+        console.log("Resposta bruta ao salvar prompt:", responseText);
         
-        if (data.success) {
-            showNotification('Prompt salvo com sucesso!', 'success');
+        try {
+            const data = JSON.parse(responseText);
             
-            // Atualizar no currentUser local
-            currentUser.prompt = promptText;
-            localStorage.setItem('currentUser', JSON.stringify(currentUser));
-        } else {
-            showNotification(data.message || 'Erro ao salvar prompt', 'error');
+            if (data.success) {
+                showNotification('Prompt salvo com sucesso!', 'success');
+                
+                // Atualizar no currentUser local
+                currentUser.prompt = promptText;
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            } else {
+                showNotification(data.message || 'Erro ao salvar prompt', 'error');
+            }
+        } catch (jsonError) {
+            console.error("Erro ao analisar JSON do prompt:", jsonError);
+            showNotification('Erro ao processar resposta do servidor', 'error');
         }
         
         // Reabilitar botão
@@ -685,11 +731,12 @@ async function toggleBot(event) {
     const isActive = event.target.checked;
     
     try {
-        const response = await fetch(`${API_URL}/whatsapp/toggle`, {
+        const response = await fetch(`${JS_API_URL}/whatsapp/toggle`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${authToken}`
+                'Authorization': `Bearer ${authToken}`,
+                'mode': 'cors'
             },
             body: JSON.stringify({
                 username: currentUser.username,
@@ -707,18 +754,28 @@ async function toggleBot(event) {
             return;
         }
         
-        const data = await response.json();
+        const responseText = await response.text();
+        console.log("Resposta bruta ao alternar bot:", responseText);
         
-        if (data.success) {
-            showNotification(`Bot ${isActive ? 'ativado' : 'desativado'} com sucesso!`, 'success');
+        try {
+            const data = JSON.parse(responseText);
             
-            // Atualizar no currentUser local
-            currentUser.botAtivo = isActive;
-            localStorage.setItem('currentUser', JSON.stringify(currentUser));
-        } else {
+            if (data.success) {
+                showNotification(`Bot ${isActive ? 'ativado' : 'desativado'} com sucesso!`, 'success');
+                
+                // Atualizar no currentUser local
+                currentUser.botAtivo = isActive;
+                localStorage.setItem('currentUser', JSON.stringify(currentUser));
+            } else {
+                // Reverter toggle se falhar
+                event.target.checked = !isActive;
+                showNotification(data.message || `Erro ao ${isActive ? 'ativar' : 'desativar'} bot`, 'error');
+            }
+        } catch (jsonError) {
+            console.error("Erro ao analisar JSON do toggle:", jsonError);
             // Reverter toggle se falhar
             event.target.checked = !isActive;
-            showNotification(data.message || `Erro ao ${isActive ? 'ativar' : 'desativar'} bot`, 'error');
+            showNotification('Erro ao processar resposta do servidor', 'error');
         }
     } catch (error) {
         console.error('Erro ao alternar status do bot:', error);
