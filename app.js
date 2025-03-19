@@ -411,65 +411,86 @@ function startQRCodeMonitoring() {
         qrCodeEventSource.close();
     }
     
-    // Criar EventSource para receber o QR Code via SSE
-    const eventSourceUrl = `${API_URL}/whatsapp/qrcode/${currentUser.username}?token=${encodeURIComponent(authToken)}`;
+    // Usar o endpoint -stream em vez de -sse
+    const eventSourceUrl = `${API_URL}/whatsapp/qrcode-stream/${currentUser.username}?token=${encodeURIComponent(authToken)}`;
     console.log("Conectando ao EventSource:", eventSourceUrl);
     
-    qrCodeEventSource = new EventSource(eventSourceUrl);
+    // Limitar tentativas a 3
+    let attemptCount = 0;
+    const maxAttempts = 3;
     
-    qrCodeEventSource.onopen = function() {
-        console.log("EventSource conectado com sucesso");
-    };
-    
-    qrCodeEventSource.onmessage = function(event) {
-        console.log("Mensagem recebida do EventSource:", event.data);
-        
-        try {
-            const data = JSON.parse(event.data);
-            
-            // Verificar se temos um QR code
-            if (data.qr) {
-                console.log("QR Code recebido, gerando imagem...");
-                // Gerar e mostrar QR Code
-                generateQRCode(data.qr);
-            } 
-            // Verificar mensagens de status
-            else if (data.status) {
-                if (data.status === "waiting") {
-                    // Atualizar mensagem com número de tentativas, se disponível
-                    const waitMessage = data.attempts 
-                        ? `Aguardando QR Code... (Tentativa ${data.attempts})`
-                        : 'Aguardando QR Code...';
-                    document.querySelector('.instruction').textContent = waitMessage;
-                }
-            }
-            // Verificar erros
-            else if (data.error) {
-                console.error("Erro recebido do servidor:", data.error);
-                document.querySelector('.instruction').textContent = `Erro: ${data.error}`;
-                
-                // Fechar EventSource em caso de erro fatal
-                qrCodeEventSource.close();
-                qrCodeEventSource = null;
-            }
-        } catch (error) {
-            console.error("Erro ao processar dados do QR code:", error);
-            document.querySelector('.instruction').textContent = 'Erro ao processar QR Code. Tente novamente.';
+    function tryConnectEventSource() {
+        if (attemptCount >= maxAttempts) {
+            console.log("Número máximo de tentativas atingido. Desistindo de conectar.");
+            document.querySelector('.instruction').textContent = 'Falha ao conectar após várias tentativas. Por favor, tente novamente mais tarde.';
+            return;
         }
-    };
+        
+        attemptCount++;
+        
+        qrCodeEventSource = new EventSource(eventSourceUrl);
+        
+        qrCodeEventSource.onopen = function() {
+            console.log("EventSource conectado com sucesso");
+        };
+        
+        qrCodeEventSource.onmessage = function(event) {
+            console.log("Mensagem recebida do EventSource:", event.data);
+            
+            try {
+                const data = JSON.parse(event.data);
+                
+                // Verificar se temos um QR code
+                if (data.qr) {
+                    console.log("QR Code recebido, gerando imagem...");
+                    // Gerar e mostrar QR Code
+                    generateQRCode(data.qr);
+                } 
+                // Verificar mensagens de status
+                else if (data.status) {
+                    if (data.status === "waiting") {
+                        // Atualizar mensagem com número de tentativas, se disponível
+                        const waitMessage = data.attempts 
+                            ? `Aguardando QR Code... (Tentativa ${data.attempts})`
+                            : 'Aguardando QR Code...';
+                        document.querySelector('.instruction').textContent = waitMessage;
+                    }
+                }
+                // Verificar erros
+                else if (data.error) {
+                    console.error("Erro recebido do servidor:", data.error);
+                    document.querySelector('.instruction').textContent = `Erro: ${data.error}`;
+                    
+                    // Fechar EventSource em caso de erro fatal
+                    qrCodeEventSource.close();
+                    qrCodeEventSource = null;
+                }
+            } catch (error) {
+                console.error("Erro ao processar dados do QR code:", error);
+                document.querySelector('.instruction').textContent = 'Erro ao processar QR Code. Tente novamente.';
+            }
+        };
+        
+        qrCodeEventSource.onerror = function(error) {
+            console.error("Erro na conexão EventSource:", error);
+            
+            // Fechar e tentar reconectar após um tempo
+            qrCodeEventSource.close();
+            qrCodeEventSource = null;
+            
+            document.querySelector('.instruction').textContent = `Erro na conexão. Tentativa ${attemptCount} de ${maxAttempts}...`;
+            
+            // Tentar reconectar após 5 segundos (até o limite de tentativas)
+            if (attemptCount < maxAttempts) {
+                setTimeout(tryConnectEventSource, 5000);
+            } else {
+                document.querySelector('.instruction').textContent = 'Falha ao conectar após várias tentativas. Por favor, tente novamente mais tarde.';
+            }
+        };
+    }
     
-    qrCodeEventSource.onerror = function(error) {
-        console.error("Erro na conexão EventSource:", error);
-        
-        // Fechar e tentar reconectar após um tempo
-        qrCodeEventSource.close();
-        qrCodeEventSource = null;
-        
-        document.querySelector('.instruction').textContent = 'Erro na conexão. Tentando novamente...';
-        
-        // Tentar reconectar após 5 segundos
-        setTimeout(startQRCodeMonitoring, 5000);
-    };
+    // Iniciar a primeira tentativa
+    tryConnectEventSource();
     
     // Atualizar status a cada 5 segundos
     qrCodeCheckInterval = setInterval(checkWhatsAppStatus, 5000);
