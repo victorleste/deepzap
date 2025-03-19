@@ -1,5 +1,5 @@
 // Configurações da aplicação
-const API_URL = 'https://2d18-187-15-7-70.ngrok-free.app/api'; // URL do servidor Flask via Ngrok
+const API_URL = 'https://aeb3-187-15-7-70.ngrok-free.app/api'; // URL do servidor Flask via Ngrok
 const JS_API_URL = 'http://localhost:3000/api'; // URL do servidor JS (opcional)
 
 // Estado da aplicação
